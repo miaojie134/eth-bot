@@ -9,6 +9,8 @@ type Config struct {
 	AlpacaAPISecret string
 	DBPath          string
 	ServerPort      string
+	LogDir          string
+	LogLevel        string
 }
 
 func LoadConfig() (*Config, error) {

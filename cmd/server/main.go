@@ -8,6 +8,7 @@ import (
 	"github.com/qqqq/eth-trading-system/internal/config"
 	"github.com/qqqq/eth-trading-system/internal/services"
 	"github.com/qqqq/eth-trading-system/internal/storage"
+	"github.com/qqqq/eth-trading-system/internal/utils"
 )
 
 func main() {
@@ -15,6 +16,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+	// 初始化日志系统
+	err = utils.InitLogger(cfg.LogDir, cfg.LogLevel)
+	if err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+
+	// 使用新的日志系统
+	utils.Log.Info("Starting ETH Trading System")
 
 	db, err := storage.InitDB(cfg.DBPath)
 	if err != nil {
@@ -34,8 +43,8 @@ func main() {
 	http.HandleFunc("/api/price", handler.GetLatestPrice)
 	http.HandleFunc("/api/historical", handler.GetHistoricalData)
 
-	log.Printf("Server starting on port %s", cfg.ServerPort)
+	utils.Log.Infof("Server starting on port %s", cfg.ServerPort)
 	if err := http.ListenAndServe(cfg.ServerPort, nil); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		utils.Log.Fatalf("Failed to start server: %v", err)
 	}
 }

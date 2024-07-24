@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/qqqq/eth-trading-system/internal/models"
+	"github.com/qqqq/eth-trading-system/internal/utils"
 )
 
 const (
@@ -105,7 +105,7 @@ func (s *AlpacaService) GetLatestBar() (*models.AlpacaBar, error) {
 
 	s.setHeaders(req)
 
-	log.Printf("请求最新数据: %s?%s", endpoint, params.Encode())
+	utils.Log.Infof("请求最新数据: %s?%s", endpoint, params.Encode())
 
 	resp, err := s.client.Do(req)
 	if err != nil {

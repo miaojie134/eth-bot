@@ -2,10 +2,11 @@ package services
 
 import (
 	"database/sql"
-	"log"
 	"time"
 
 	"github.com/qqqq/eth-trading-system/internal/models"
+	"github.com/qqqq/eth-trading-system/internal/utils"
+	"github.com/sirupsen/logrus"
 )
 
 const apiLimit = 10000 // API的限制条数
@@ -32,6 +33,7 @@ func (s *DataCollectionService) Start() {
 	go s.startTicker("1Hour", 1*time.Hour)
 	go s.startTicker("4Hour", 4*time.Hour)
 	go s.startTicker("1Day", 24*time.Hour)
+	utils.Log.Info("Data collection service started")
 }
 
 func (s *DataCollectionService) initializeData() {
@@ -42,7 +44,7 @@ func (s *DataCollectionService) initializeData() {
 func (s *DataCollectionService) initializeHistoricalData() {
 	timeframes := []string{"5Min", "15Min", "1Hour", "4Hour", "1Day"}
 	for _, timeframe := range timeframes {
-		log.Printf("初始化历史数据，周期: %s", timeframe)
+		utils.Log.Infof("初始化历史数据，周期: %s", timeframe)
 		s.collectAndStoreHistoricalData(timeframe)
 	}
 }
@@ -50,7 +52,7 @@ func (s *DataCollectionService) initializeHistoricalData() {
 func (s *DataCollectionService) startTicker(timeframe string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	for range ticker.C {
-		log.Printf("收集和存储数据，周期: %s", timeframe)
+		utils.Log.Infof("收集和存储数据，周期: %s", timeframe)
 		s.collectAndStoreHistoricalData(timeframe)
 	}
 }
@@ -58,13 +60,13 @@ func (s *DataCollectionService) startTicker(timeframe string, interval time.Dura
 func (s *DataCollectionService) collectAndStoreLatestPrice() {
 	bar, err := s.alpacaService.GetLatestBar()
 	if err != nil {
-		log.Printf("获取最新数据错误: %v", err)
+		utils.Log.WithError(err).Error("Failed to get latest data")
 		return
 	}
 
 	timestamp, err := time.Parse(time.RFC3339, bar.Timestamp)
 	if err != nil {
-		log.Printf("解析时间戳错误: %v", err)
+		utils.Log.WithError(err).Error("Failed to parse timestamp")
 		return
 	}
 
@@ -76,29 +78,35 @@ func (s *DataCollectionService) collectAndStoreLatestPrice() {
 	`, "ETH/USD", bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, timestamp, bar.TradeCount, bar.VWAP)
 
 	if err != nil {
-		log.Printf("插入最新价格到数据库错误: %v", err)
+		utils.Log.WithError(err).Error("Failed to store latest data")
+		return
 	}
+	utils.Log.WithFields(logrus.Fields{
+		"symbol": "ETH/USD",
+		"price":  bar.Close,
+		"time":   bar.Timestamp,
+	}).Info("Latest price collected and stored")
+
 }
 
 func (s *DataCollectionService) collectAndStoreHistoricalData(timeframe string) {
 	end := time.Now().UTC()
 	start := end.Add(-calculateDuration(timeframe))
-	log.Printf("获取历史数据，周期: %s，开始时间: %s，结束时间: %s", timeframe, start.Format(time.RFC3339), end.Format(time.RFC3339))
-
+	utils.Log.Infof("收集历史数据，周期: %s, 开始时间: %s, 结束时间: %s", timeframe, start, end)
 	pageToken := ""
 	pageCount := 0
 	for {
 		pageCount++
 		bars, newPageToken, err := s.alpacaService.GetHistoricalBars("ETH/USD", timeframe, start.Format(time.RFC3339), end.Format(time.RFC3339), apiLimit, pageToken)
 		if err != nil {
-			log.Printf("获取历史数据错误，周期: %s: %v", timeframe, err)
+			utils.Log.WithError(err).Error("Failed to get historical data")
 			return
 		}
 
 		for _, bar := range bars {
 			timestamp, err := time.Parse(time.RFC3339, bar.Timestamp)
 			if err != nil {
-				log.Printf("解析时间戳错误: %v", err)
+				utils.Log.WithError(err).Error("Failed to parse timestamp")
 				continue
 			}
 
@@ -110,17 +118,18 @@ func (s *DataCollectionService) collectAndStoreHistoricalData(timeframe string) 
 			`, "ETH/USD", timeframe, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, timestamp, bar.TradeCount, bar.VWAP)
 
 			if err != nil {
-				log.Printf("插入历史数据到数据库错误，周期: %s: %v", timeframe, err)
+				utils.Log.WithError(err).Error("Failed to store historical data")
+				return
 			}
 		}
 
 		if newPageToken == "" {
-			log.Printf("历史数据收集完成，周期: %s，总页数: %d", timeframe, pageCount)
+			utils.Log.Infof("历史数据收集完成，周期: %s，页数: %d", timeframe, pageCount)
 			break
 		}
 
 		pageToken = newPageToken
-		log.Printf("获取下一页历史数据，周期: %s，页数: %d", timeframe, pageCount)
+		utils.Log.Infof("历史数据收集完成，周期: %s，页数: %d", timeframe, pageCount)
 	}
 }
 
