@@ -1,6 +1,4 @@
-// internal/analysis/indicators.go
-
-package analysis
+package indicators
 
 import (
 	"fmt"
@@ -8,27 +6,14 @@ import (
 	"github.com/qqqq/eth-trading-system/internal/models"
 )
 
-type SimpleMovingAverage struct {
-	Period int
-}
-
-func (sma *SimpleMovingAverage) Calculate(bars []models.Bar) (interface{}, error) {
-	if len(bars) < sma.Period {
-		return nil, fmt.Errorf("not enough data for SMA calculation")
-	}
-	sum := 0.0
-	for i := len(bars) - sma.Period; i < len(bars); i++ {
-		sum += bars[i].Close
-	}
-	return sum / float64(sma.Period), nil
-}
-
-func (sma *SimpleMovingAverage) Name() string {
-	return fmt.Sprintf("SMA%d", sma.Period)
-}
-
 type RelativeStrengthIndex struct {
 	Period int
+}
+
+func NewRelativeStrengthIndex(period int) *RelativeStrengthIndex {
+	return &RelativeStrengthIndex{
+		Period: period,
+	}
 }
 
 func (rsi *RelativeStrengthIndex) Calculate(bars []models.Bar) (interface{}, error) {
@@ -71,5 +56,5 @@ func (rsi *RelativeStrengthIndex) Calculate(bars []models.Bar) (interface{}, err
 }
 
 func (rsi *RelativeStrengthIndex) Name() string {
-	return fmt.Sprintf("RSI%d", rsi.Period)
+	return fmt.Sprintf("RSI(%d)", rsi.Period)
 }

@@ -28,95 +28,87 @@ func NewHandler(alpacaService *services.AlpacaService, dataCollectionService *se
 func (h *Handler) GetLatestPrice(w http.ResponseWriter, r *http.Request) {
 	bar, err := h.dataCollectionService.GetLatestPrice()
 	if err != nil {
-		http.Error(w, "获取最新价格失败: "+err.Error(), http.StatusInternalServerError)
+		respondWithError(w, http.StatusInternalServerError, "获取最新价格失败")
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"open":       bar.Open,
-		"high":       bar.High,
-		"low":        bar.Low,
-		"close":      bar.Close,
-		"volume":     bar.Volume,
-		"timestamp":  bar.Timestamp,
-		"tradeCount": bar.TradeCount,
-		"vwap":       bar.VWAP,
-	})
+	respondWithJSON(w, http.StatusOK, bar)
 }
 
 func (h *Handler) GetHistoricalData(w http.ResponseWriter, r *http.Request) {
 	timeframe := r.URL.Query().Get("timeframe")
 	if timeframe == "" {
-		http.Error(w, "必须提供timeframe参数", http.StatusBadRequest)
+		respondWithError(w, http.StatusBadRequest, "必须提供timeframe参数")
 		return
 	}
 
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
-
-	start, err := time.Parse(time.RFC3339, startStr)
+	start, end, err := parseTimeRange(r)
 	if err != nil {
-		http.Error(w, "开始时间无效", http.StatusBadRequest)
-		return
-	}
-
-	end, err := time.Parse(time.RFC3339, endStr)
-	if err != nil {
-		http.Error(w, "结束时间无效", http.StatusBadRequest)
+		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	bars, err := h.dataCollectionService.GetHistoricalData(timeframe, start, end)
 	if err != nil {
-		http.Error(w, "获取历史数据失败: "+err.Error(), http.StatusInternalServerError)
+		respondWithError(w, http.StatusInternalServerError, "获取历史数据失败")
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(bars)
+	respondWithJSON(w, http.StatusOK, bars)
 }
 
 func (h *Handler) GetMarketAnalysis(w http.ResponseWriter, r *http.Request) {
 	timeframe := r.URL.Query().Get("timeframe")
 	if timeframe == "" {
-		http.Error(w, "必须提供timeframe参数", http.StatusBadRequest)
+		respondWithError(w, http.StatusBadRequest, "必须提供timeframe参数")
 		return
 	}
 
 	result, err := h.analysisService.GetLatestAnalysis(timeframe)
 	if err != nil {
-		http.Error(w, "获取市场分析失败: "+err.Error(), http.StatusInternalServerError)
+		respondWithError(w, http.StatusInternalServerError, "获取市场分析失败")
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	respondWithJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) IndexHandler(w http.ResponseWriter, r *http.Request) {
-	timeframe := "1Day"
-	latestBar, err := h.dataCollectionService.GetLatestPrice()
+	data, err := h.getIndexData()
 	if err != nil {
-		http.Error(w, "获取最新数据失败", http.StatusInternalServerError)
+		respondWithError(w, http.StatusInternalServerError, "获取数据失败")
 		return
 	}
-	// 获取市场分析数据
+
+	tmpl, err := template.ParseFiles("web/templates/index.html")
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "加载模板失败")
+		return
+	}
+
+	if err := tmpl.Execute(w, data); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "渲染模板失败")
+	}
+}
+
+// Helper functions
+
+func (h *Handler) getIndexData() (interface{}, error) {
+	latestBar, err := h.dataCollectionService.GetLatestPrice()
+	if err != nil {
+		return nil, err
+	}
+
 	analysisResult, err := h.analysisService.GetLatestAnalysis("1Day")
 	if err != nil {
-		http.Error(w, "获取市场分析失败", http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
 	end := time.Now()
 	start := end.Add(-24 * time.Hour)
-	historicalData, err := h.dataCollectionService.GetHistoricalData(timeframe, start, end)
+	historicalData, err := h.dataCollectionService.GetHistoricalData("1Day", start, end)
 	if err != nil {
-		http.Error(w, "获取历史数据失败", http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
-	data := struct {
+	return struct {
 		IsRunning             bool
 		LatestPrice           float64
 		HistoricalData        []models.Bar
@@ -128,17 +120,33 @@ func (h *Handler) IndexHandler(w http.ResponseWriter, r *http.Request) {
 		HistoricalData:        historicalData,
 		DataCollectionRunning: true,
 		MarketAnalysis:        analysisResult,
+	}, nil
+}
+
+func parseTimeRange(r *http.Request) (time.Time, time.Time, error) {
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+
+	start, err := time.Parse(time.RFC3339, startStr)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
 	}
 
-	tmpl, err := template.ParseFiles("web/templates/index.html")
+	end, err := time.Parse(time.RFC3339, endStr)
 	if err != nil {
-		http.Error(w, "加载模板失败", http.StatusInternalServerError)
-		return
+		return time.Time{}, time.Time{}, err
 	}
 
-	err = tmpl.Execute(w, data)
-	if err != nil {
-		http.Error(w, "渲染模板失败", http.StatusInternalServerError)
-		return
-	}
+	return start, end, nil
+}
+
+func respondWithError(w http.ResponseWriter, code int, message string) {
+	respondWithJSON(w, code, map[string]string{"error": message})
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	response, _ := json.Marshal(payload)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(response)
 }

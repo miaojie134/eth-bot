@@ -162,10 +162,10 @@ func NewAlpacaService(client AlpacaClient) *AlpacaService {
 	return &AlpacaService{client: client}
 }
 
-func (s *AlpacaService) GetHistoricalBars(symbol, timeframe, start, end string, limit int, pageToken string) ([]models.AlpacaBar, string, error) {
-	return s.client.GetHistoricalBars(symbol, timeframe, start, end, limit, pageToken)
-}
-
 func (s *AlpacaService) GetLatestBar(symbol string) (*models.AlpacaBar, error) {
 	return s.client.GetLatestBar(symbol)
+}
+
+func (s *AlpacaService) GetHistoricalBars(symbol, timeframe, start, end string, limit int, pageToken string) ([]models.AlpacaBar, string, error) {
+	return s.client.GetHistoricalBars(symbol, timeframe, start, end, limit, pageToken)
 }

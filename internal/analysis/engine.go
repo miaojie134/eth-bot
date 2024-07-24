@@ -5,17 +5,23 @@ package analysis
 import (
 	"time"
 
+	"github.com/qqqq/eth-trading-system/internal/analysis/support_resistance"
+	"github.com/qqqq/eth-trading-system/internal/analysis/trend"
 	"github.com/qqqq/eth-trading-system/internal/models"
 	"github.com/qqqq/eth-trading-system/internal/utils"
 )
 
 type AnalysisEngine struct {
-	indicators []Indicator
+	indicators                []Indicator
+	trendAnalyzer             *trend.TrendAnalyzer
+	supportResistanceAnalyzer *support_resistance.SupportResistanceAnalyzer
 }
 
 func NewAnalysisEngine() *AnalysisEngine {
 	return &AnalysisEngine{
-		indicators: make([]Indicator, 0),
+		indicators:                make([]Indicator, 0),
+		trendAnalyzer:             trend.NewTrendAnalyzer(10, 30),
+		supportResistanceAnalyzer: support_resistance.NewSupportResistanceAnalyzer(20),
 	}
 }
 
@@ -39,14 +45,23 @@ func (e *AnalysisEngine) Analyze(bars []models.Bar) (*AnalysisResult, error) {
 		result.Indicators[indicator.Name()] = value
 	}
 
-	// 简单的市场状态判断逻辑
-	if len(bars) > 1 {
-		if bars[len(bars)-1].Close > bars[len(bars)-2].Close {
-			result.MarketState = Bullish
-		} else if bars[len(bars)-1].Close < bars[len(bars)-2].Close {
-			result.MarketState = Bearish
-		}
+	trendState, err := e.trendAnalyzer.AnalyzeTrend(bars)
+	if err != nil {
+		return nil, err
 	}
+	result.Indicators["Trend"] = trendState
+
+	supports, resistances := e.supportResistanceAnalyzer.FindLevels(bars)
+	result.Indicators["Supports"] = supports
+	result.Indicators["Resistances"] = resistances
+
+	// 市场状态判断逻辑
+	if trendState == "Uptrend" {
+		result.MarketState = Bullish
+	} else if trendState == "Downtrend" {
+		result.MarketState = Bearish
+	}
+
 	utils.Log.Infof("分析结果：%+v", result)
 	return result, nil
 }
