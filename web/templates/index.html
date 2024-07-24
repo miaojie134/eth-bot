@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ETH Trading System Status</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      color: #333;
+    }
+
+    .status {
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .running {
+      background-color: #d4edda;
+      color: #155724;
+    }
+
+    .not-running {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    th,
+    td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f2f2f2;
+    }
+  </style>
+  <script>
+    async function fetchHistoricalData(timeframe) {
+      const response = await fetch(`/api/historical?timeframe=${timeframe}&start=${new Date(new Date().setDate(new Date().getDate() - 1)).toISOString()}&end=${new Date().toISOString()}`);
+      const data = await response.json();
+      const tableBody = document.getElementById('historical-data-body');
+      tableBody.innerHTML = '';
+      data.forEach(bar => {
+        const row = document.createElement('tr');
+
+        // 将UTC时间转换为中国标准时间
+        const timestamp = new Date(bar.Timestamp);
+        const formatter = new Intl.DateTimeFormat('zh-CN', {
+          timeZone: 'Asia/Shanghai',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+
+        const timestampCell = document.createElement('td');
+        timestampCell.textContent = formatter.format(timestamp); // 显示中国时间
+        row.appendChild(timestampCell);
+
+        const priceCell = document.createElement('td');
+        priceCell.textContent = bar.Close;
+        row.appendChild(priceCell);
+
+        const volumeCell = document.createElement('td');
+        volumeCell.textContent = bar.Volume;
+        row.appendChild(volumeCell);
+
+        tableBody.appendChild(row);
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const timeframeSelect = document.getElementById('timeframe-select');
+      timeframeSelect.addEventListener('change', (event) => {
+        fetchHistoricalData(event.target.value);
+      });
+      fetchHistoricalData(timeframeSelect.value); // Fetch initial data
+    });
+  </script>
+</head>
+
+<body>
+  <h1>ETH Trading System Status</h1>
+  <div class="status {{if .IsRunning}}running{{else}}not-running{{end}}">
+    System Status: {{if .IsRunning}}Running{{else}}Not Running{{end}}
+  </div>
+  <h2>Latest ETH Price</h2>
+  <p>{{.LatestPrice}} USD</p>
+  <h2>Recent Historical Data</h2>
+  <label for="timeframe-select">Select Timeframe:</label>
+  <select id="timeframe-select">
+    <option value="5Min">5 Minutes</option>
+    <option value="15Min">15 Minutes</option>
+    <option value="1Hour">1 Hour</option>
+    <option value="4Hour">4 Hours</option>
+    <option value="1Day">1 Day</option>
+  </select>
+  <table>
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Price</th>
+        <th>Volume</th>
+      </tr>
+    </thead>
+    <tbody id="historical-data-body">
+      {{range .HistoricalData}}
+      <tr>
+        <td>{{.Timestamp}}</td>
+        <td>{{.Close}}</td>
+        <td>{{.Volume}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  <h2>Data Collection Service Status</h2>
+  <p>{{if .DataCollectionRunning}}Running{{else}}Not Running{{end}}</p>
+</body>
+
+</html>
