@@ -6,6 +6,7 @@ import (
 
 	"github.com/qqqq/eth-trading-system/internal/api"
 	"github.com/qqqq/eth-trading-system/internal/config"
+	"github.com/qqqq/eth-trading-system/internal/datamanager"
 	"github.com/qqqq/eth-trading-system/internal/services"
 	"github.com/qqqq/eth-trading-system/internal/storage"
 	"github.com/qqqq/eth-trading-system/internal/utils"
@@ -34,7 +35,12 @@ func main() {
 
 	alpacaClient := services.NewAlpacaClient(cfg.AlpacaAPIKey, cfg.AlpacaAPISecret)
 	alpacaService := services.NewAlpacaService(alpacaClient)
-	dataCollectionService := services.NewDataCollectionService(alpacaService, dataRepo)
+
+	// 初始化 DataManager
+	dataManager := datamanager.NewDataManager(alpacaService, dataRepo)
+
+	// 使用 DataManager 创建 DataCollectionService
+	dataCollectionService := services.NewDataCollectionService(dataManager)
 	dataCollectionService.Start()
 
 	handler := api.NewHandler(alpacaService, dataCollectionService, analysisService)

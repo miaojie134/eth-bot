@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/qqqq/eth-trading-system/internal/datamanager"
 	"github.com/qqqq/eth-trading-system/internal/models"
 	"github.com/qqqq/eth-trading-system/internal/utils"
 )
@@ -153,6 +154,9 @@ func (c *HTTPAlpacaClient) setHeaders(req *http.Request) {
 type AlpacaService struct {
 	client AlpacaClient
 }
+
+// 确保 AlpacaService 实现了 MarketDataProvider 接口
+var _ datamanager.MarketDataProvider = (*AlpacaService)(nil)
 
 func NewAlpacaService(client AlpacaClient) *AlpacaService {
 	return &AlpacaService{client: client}

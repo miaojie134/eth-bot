@@ -3,25 +3,18 @@ package services
 import (
 	"time"
 
+	"github.com/qqqq/eth-trading-system/internal/datamanager"
 	"github.com/qqqq/eth-trading-system/internal/models"
-	"github.com/qqqq/eth-trading-system/internal/storage"
 	"github.com/qqqq/eth-trading-system/internal/utils"
 )
 
-const (
-	ethSymbol = "ETH/USD"
-	apiLimit  = 10000
-)
-
 type DataCollectionService struct {
-	alpacaService *AlpacaService
-	dataRepo      storage.DataRepository
+	dataManager *datamanager.DataManager
 }
 
-func NewDataCollectionService(alpacaService *AlpacaService, dataRepo storage.DataRepository) *DataCollectionService {
+func NewDataCollectionService(dataManager *datamanager.DataManager) *DataCollectionService {
 	return &DataCollectionService{
-		alpacaService: alpacaService,
-		dataRepo:      dataRepo,
+		dataManager: dataManager,
 	}
 }
 
@@ -58,65 +51,27 @@ func (s *DataCollectionService) startTicker(timeframe string, interval time.Dura
 }
 
 func (s *DataCollectionService) collectAndStoreLatestPrice() {
-	bar, err := s.alpacaService.GetLatestBar(ethSymbol)
+	err := s.dataManager.CollectAndStoreLatestPrice()
 	if err != nil {
-		utils.Log.WithError(err).Error("获取最新数据失败")
-		return
+		utils.Log.WithError(err).Error("收集并存储最新价格失败")
 	}
-
-	latestBar := convertAlpacaBarToBar(bar)
-	err = s.dataRepo.StoreLatestPrice(latestBar)
-	if err != nil {
-		utils.Log.WithError(err).Error("存储最新数据失败")
-		return
-	}
-
-	utils.Log.WithFields(map[string]interface{}{
-		"symbol": ethSymbol,
-		"price":  latestBar.Close,
-		"time":   latestBar.Timestamp,
-	}).Info("最新价格已收集并存储")
 }
 
 func (s *DataCollectionService) collectAndStoreHistoricalData(timeframe string) {
 	end := time.Now().UTC()
 	start := end.Add(-calculateDuration(timeframe))
-	utils.Log.Infof("收集历史数据，时间框架: %s, 开始: %s, 结束: %s", timeframe, start, end)
-
-	pageToken := ""
-	pageCount := 0
-
-	for {
-		pageCount++
-		bars, newPageToken, err := s.alpacaService.GetHistoricalBars(ethSymbol, timeframe, start.Format(time.RFC3339), end.Format(time.RFC3339), apiLimit, pageToken)
-		if err != nil {
-			utils.Log.WithError(err).Error("获取历史数据失败")
-			return
-		}
-
-		convertedBars := convertAlpacaBarsToBar(bars)
-		err = s.dataRepo.StoreHistoricalData(convertedBars, timeframe)
-		if err != nil {
-			utils.Log.WithError(err).Error("存储历史数据失败")
-			return
-		}
-
-		if newPageToken == "" {
-			utils.Log.Infof("历史数据收集完成，时间框架: %s, 页数: %d", timeframe, pageCount)
-			break
-		}
-
-		pageToken = newPageToken
-		utils.Log.Infof("历史数据收集中，时间框架: %s, 页数: %d", timeframe, pageCount)
+	err := s.dataManager.CollectAndStoreHistoricalData(timeframe, start, end)
+	if err != nil {
+		utils.Log.WithError(err).Errorf("收集并存储历史数据失败，时间框架: %s", timeframe)
 	}
 }
 
 func (s *DataCollectionService) GetLatestPrice() (*models.Bar, error) {
-	return s.dataRepo.GetLatestPrice()
+	return s.dataManager.GetLatestPrice()
 }
 
 func (s *DataCollectionService) GetHistoricalData(timeframe string, start, end time.Time) ([]models.Bar, error) {
-	return s.dataRepo.GetHistoricalData(timeframe, start, end)
+	return s.dataManager.GetHistoricalData(timeframe, start, end)
 }
 
 func calculateDuration(timeframe string) time.Duration {
@@ -136,24 +91,24 @@ func calculateDuration(timeframe string) time.Duration {
 	}
 }
 
-func convertAlpacaBarToBar(alpacaBar *models.AlpacaBar) *models.Bar {
-	timestamp, _ := time.Parse(time.RFC3339, alpacaBar.Timestamp)
-	return &models.Bar{
-		Open:       alpacaBar.Open,
-		High:       alpacaBar.High,
-		Low:        alpacaBar.Low,
-		Close:      alpacaBar.Close,
-		Volume:     alpacaBar.Volume,
-		Timestamp:  timestamp,
-		TradeCount: alpacaBar.TradeCount,
-		VWAP:       alpacaBar.VWAP,
-	}
-}
+// func convertAlpacaBarToBar(alpacaBar *models.AlpacaBar) *models.Bar {
+// 	timestamp, _ := time.Parse(time.RFC3339, alpacaBar.Timestamp)
+// 	return &models.Bar{
+// 		Open:       alpacaBar.Open,
+// 		High:       alpacaBar.High,
+// 		Low:        alpacaBar.Low,
+// 		Close:      alpacaBar.Close,
+// 		Volume:     alpacaBar.Volume,
+// 		Timestamp:  timestamp,
+// 		TradeCount: alpacaBar.TradeCount,
+// 		VWAP:       alpacaBar.VWAP,
+// 	}
+// }
 
-func convertAlpacaBarsToBar(alpacaBars []models.AlpacaBar) []models.Bar {
-	var bars []models.Bar
-	for _, alpacaBar := range alpacaBars {
-		bars = append(bars, *convertAlpacaBarToBar(&alpacaBar))
-	}
-	return bars
-}
+// func convertAlpacaBarsToBar(alpacaBars []models.AlpacaBar) []models.Bar {
+// 	var bars []models.Bar
+// 	for _, alpacaBar := range alpacaBars {
+// 		bars = append(bars, *convertAlpacaBarToBar(&alpacaBar))
+// 	}
+// 	return bars
+// }
