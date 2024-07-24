@@ -14,27 +14,25 @@ import (
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
-	}
-	// 初始化日志系统
-	err = utils.InitLogger(cfg.LogDir, cfg.LogLevel)
-	if err != nil {
-		log.Fatalf("Failed to initialize logger: %v", err)
+		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	// 使用新的日志系统
-	utils.Log.Info("Starting ETH Trading System")
+	if err := utils.InitLogger(cfg.LogDir, cfg.LogLevel); err != nil {
+		log.Fatalf("初始化日志记录器失败: %v", err)
+	}
 
-	db, err := storage.InitDB(cfg.DBPath)
+	utils.Log.Info("启动ETH交易系统")
+
+	db, err := storage.NewSQLiteDB(cfg.DBPath)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		utils.Log.Fatalf("初始化数据库失败: %v", err)
 	}
 	defer db.Close()
 
-	alpacaService := services.NewAlpacaService(cfg.AlpacaAPIKey, cfg.AlpacaAPISecret)
-
-	// 创建并启动数据收集服务
-	dataCollectionService := services.NewDataCollectionService(alpacaService, db)
+	dataRepo := storage.NewDataRepository(db.DB)
+	alpacaClient := services.NewAlpacaClient(cfg.AlpacaAPIKey, cfg.AlpacaAPISecret)
+	alpacaService := services.NewAlpacaService(alpacaClient)
+	dataCollectionService := services.NewDataCollectionService(alpacaService, dataRepo)
 	dataCollectionService.Start()
 
 	handler := api.NewHandler(alpacaService, dataCollectionService)
@@ -43,8 +41,8 @@ func main() {
 	http.HandleFunc("/api/price", handler.GetLatestPrice)
 	http.HandleFunc("/api/historical", handler.GetHistoricalData)
 
-	utils.Log.Infof("Server starting on port %s", cfg.ServerPort)
+	utils.Log.Infof("服务器启动在端口 %s", cfg.ServerPort)
 	if err := http.ListenAndServe(cfg.ServerPort, nil); err != nil {
-		utils.Log.Fatalf("Failed to start server: %v", err)
+		utils.Log.Fatalf("启动服务器失败: %v", err)
 	}
 }

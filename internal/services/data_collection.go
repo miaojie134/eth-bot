@@ -1,39 +1,39 @@
 package services
 
 import (
-	"database/sql"
 	"time"
 
 	"github.com/qqqq/eth-trading-system/internal/models"
+	"github.com/qqqq/eth-trading-system/internal/storage"
 	"github.com/qqqq/eth-trading-system/internal/utils"
-	"github.com/sirupsen/logrus"
 )
 
-const apiLimit = 10000 // API的限制条数
+const (
+	ethSymbol = "ETH/USD"
+	apiLimit  = 10000
+)
 
 type DataCollectionService struct {
 	alpacaService *AlpacaService
-	db            *sql.DB
+	dataRepo      storage.DataRepository
 }
 
-func NewDataCollectionService(alpacaService *AlpacaService, db *sql.DB) *DataCollectionService {
+func NewDataCollectionService(alpacaService *AlpacaService, dataRepo storage.DataRepository) *DataCollectionService {
 	return &DataCollectionService{
 		alpacaService: alpacaService,
-		db:            db,
+		dataRepo:      dataRepo,
 	}
 }
 
 func (s *DataCollectionService) Start() {
-	// 初始化时先获取历史数据和最新价格
 	s.initializeData()
 
-	// 设置不同K线周期的更新频率
 	go s.startTicker("5Min", 5*time.Minute)
 	go s.startTicker("15Min", 15*time.Minute)
 	go s.startTicker("1Hour", 1*time.Hour)
 	go s.startTicker("4Hour", 4*time.Hour)
 	go s.startTicker("1Day", 24*time.Hour)
-	utils.Log.Info("Data collection service started")
+	utils.Log.Info("数据收集服务已启动")
 }
 
 func (s *DataCollectionService) initializeData() {
@@ -44,7 +44,7 @@ func (s *DataCollectionService) initializeData() {
 func (s *DataCollectionService) initializeHistoricalData() {
 	timeframes := []string{"5Min", "15Min", "1Hour", "4Hour", "1Day"}
 	for _, timeframe := range timeframes {
-		utils.Log.Infof("初始化历史数据，周期: %s", timeframe)
+		utils.Log.Infof("初始化历史数据，时间框架: %s", timeframe)
 		s.collectAndStoreHistoricalData(timeframe)
 	}
 }
@@ -52,85 +52,71 @@ func (s *DataCollectionService) initializeHistoricalData() {
 func (s *DataCollectionService) startTicker(timeframe string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	for range ticker.C {
-		utils.Log.Infof("收集和存储数据，周期: %s", timeframe)
+		utils.Log.Infof("收集并存储数据，时间框架: %s", timeframe)
 		s.collectAndStoreHistoricalData(timeframe)
 	}
 }
 
 func (s *DataCollectionService) collectAndStoreLatestPrice() {
-	bar, err := s.alpacaService.GetLatestBar()
+	bar, err := s.alpacaService.GetLatestBar(ethSymbol)
 	if err != nil {
-		utils.Log.WithError(err).Error("Failed to get latest data")
+		utils.Log.WithError(err).Error("获取最新数据失败")
 		return
 	}
 
-	timestamp, err := time.Parse(time.RFC3339, bar.Timestamp)
+	latestBar := convertAlpacaBarToBar(bar)
+	err = s.dataRepo.StoreLatestPrice(latestBar)
 	if err != nil {
-		utils.Log.WithError(err).Error("Failed to parse timestamp")
+		utils.Log.WithError(err).Error("存储最新数据失败")
 		return
 	}
 
-	_, err = s.db.Exec(`
-		INSERT INTO latest_price (symbol, open, high, low, close, volume, timestamp, trade_count, vwap)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(symbol) DO UPDATE SET
-		open=excluded.open, high=excluded.high, low=excluded.low, close=excluded.close, volume=excluded.volume, timestamp=excluded.timestamp, trade_count=excluded.trade_count, vwap=excluded.vwap
-	`, "ETH/USD", bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, timestamp, bar.TradeCount, bar.VWAP)
-
-	if err != nil {
-		utils.Log.WithError(err).Error("Failed to store latest data")
-		return
-	}
-	utils.Log.WithFields(logrus.Fields{
-		"symbol": "ETH/USD",
-		"price":  bar.Close,
-		"time":   bar.Timestamp,
-	}).Info("Latest price collected and stored")
-
+	utils.Log.WithFields(map[string]interface{}{
+		"symbol": ethSymbol,
+		"price":  latestBar.Close,
+		"time":   latestBar.Timestamp,
+	}).Info("最新价格已收集并存储")
 }
 
 func (s *DataCollectionService) collectAndStoreHistoricalData(timeframe string) {
 	end := time.Now().UTC()
 	start := end.Add(-calculateDuration(timeframe))
-	utils.Log.Infof("收集历史数据，周期: %s, 开始时间: %s, 结束时间: %s", timeframe, start, end)
+	utils.Log.Infof("收集历史数据，时间框架: %s, 开始: %s, 结束: %s", timeframe, start, end)
+
 	pageToken := ""
 	pageCount := 0
+
 	for {
 		pageCount++
-		bars, newPageToken, err := s.alpacaService.GetHistoricalBars("ETH/USD", timeframe, start.Format(time.RFC3339), end.Format(time.RFC3339), apiLimit, pageToken)
+		bars, newPageToken, err := s.alpacaService.GetHistoricalBars(ethSymbol, timeframe, start.Format(time.RFC3339), end.Format(time.RFC3339), apiLimit, pageToken)
 		if err != nil {
-			utils.Log.WithError(err).Error("Failed to get historical data")
+			utils.Log.WithError(err).Error("获取历史数据失败")
 			return
 		}
 
-		for _, bar := range bars {
-			timestamp, err := time.Parse(time.RFC3339, bar.Timestamp)
-			if err != nil {
-				utils.Log.WithError(err).Error("Failed to parse timestamp")
-				continue
-			}
-
-			_, err = s.db.Exec(`
-				INSERT INTO market_data (symbol, timeframe, open, high, low, close, volume, timestamp, trade_count, vwap)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(symbol, timeframe, timestamp) DO UPDATE SET
-				open=excluded.open, high=excluded.high, low=excluded.low, close=excluded.close, volume=excluded.volume, trade_count=excluded.trade_count, vwap=excluded.vwap
-			`, "ETH/USD", timeframe, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, timestamp, bar.TradeCount, bar.VWAP)
-
-			if err != nil {
-				utils.Log.WithError(err).Error("Failed to store historical data")
-				return
-			}
+		convertedBars := convertAlpacaBarsToBar(bars)
+		err = s.dataRepo.StoreHistoricalData(convertedBars, timeframe)
+		if err != nil {
+			utils.Log.WithError(err).Error("存储历史数据失败")
+			return
 		}
 
 		if newPageToken == "" {
-			utils.Log.Infof("历史数据收集完成，周期: %s，页数: %d", timeframe, pageCount)
+			utils.Log.Infof("历史数据收集完成，时间框架: %s, 页数: %d", timeframe, pageCount)
 			break
 		}
 
 		pageToken = newPageToken
-		utils.Log.Infof("历史数据收集完成，周期: %s，页数: %d", timeframe, pageCount)
+		utils.Log.Infof("历史数据收集中，时间框架: %s, 页数: %d", timeframe, pageCount)
 	}
+}
+
+func (s *DataCollectionService) GetLatestPrice() (*models.Bar, error) {
+	return s.dataRepo.GetLatestPrice()
+}
+
+func (s *DataCollectionService) GetHistoricalData(timeframe string, start, end time.Time) ([]models.Bar, error) {
+	return s.dataRepo.GetHistoricalData(timeframe, start, end)
 }
 
 func calculateDuration(timeframe string) time.Duration {
@@ -150,60 +136,24 @@ func calculateDuration(timeframe string) time.Duration {
 	}
 }
 
-func (s *DataCollectionService) GetLatestStoredData(timeframe string) (*models.Bar, error) {
-	var bar models.Bar
-	err := s.db.QueryRow(`
-		SELECT open, high, low, close, volume, timestamp, trade_count, vwap
-		FROM market_data
-		WHERE symbol = 'ETH/USD' AND timeframe = ?
-		ORDER BY timestamp DESC
-		LIMIT 1
-	`, timeframe).Scan(&bar.Open, &bar.High, &bar.Low, &bar.Close, &bar.Volume, &bar.Timestamp, &bar.TradeCount, &bar.VWAP)
-
-	if err != nil {
-		return nil, err
+func convertAlpacaBarToBar(alpacaBar *models.AlpacaBar) *models.Bar {
+	timestamp, _ := time.Parse(time.RFC3339, alpacaBar.Timestamp)
+	return &models.Bar{
+		Open:       alpacaBar.Open,
+		High:       alpacaBar.High,
+		Low:        alpacaBar.Low,
+		Close:      alpacaBar.Close,
+		Volume:     alpacaBar.Volume,
+		Timestamp:  timestamp,
+		TradeCount: alpacaBar.TradeCount,
+		VWAP:       alpacaBar.VWAP,
 	}
-
-	return &bar, nil
 }
 
-func (s *DataCollectionService) GetLatestPrice() (*models.Bar, error) {
-	var bar models.Bar
-	err := s.db.QueryRow(`
-		SELECT open, high, low, close, volume, timestamp, trade_count, vwap
-		FROM latest_price
-		WHERE symbol = 'ETH/USD'
-	`).Scan(&bar.Open, &bar.High, &bar.Low, &bar.Close, &bar.Volume, &bar.Timestamp, &bar.TradeCount, &bar.VWAP)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &bar, nil
-}
-
-func (s *DataCollectionService) GetHistoricalData(timeframe string, start, end time.Time) ([]models.Bar, error) {
-	rows, err := s.db.Query(`
-		SELECT open, high, low, close, volume, timestamp, trade_count, vwap
-		FROM market_data
-		WHERE symbol = 'ETH/USD' AND timeframe = ? AND timestamp BETWEEN ? AND ?
-		ORDER BY timestamp ASC
-	`, timeframe, start, end)
-
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+func convertAlpacaBarsToBar(alpacaBars []models.AlpacaBar) []models.Bar {
 	var bars []models.Bar
-	for rows.Next() {
-		var bar models.Bar
-		err := rows.Scan(&bar.Open, &bar.High, &bar.Low, &bar.Close, &bar.Volume, &bar.Timestamp, &bar.TradeCount, &bar.VWAP)
-		if err != nil {
-			return nil, err
-		}
-		bars = append(bars, bar)
+	for _, alpacaBar := range alpacaBars {
+		bars = append(bars, *convertAlpacaBarToBar(&alpacaBar))
 	}
-
-	return bars, nil
+	return bars
 }

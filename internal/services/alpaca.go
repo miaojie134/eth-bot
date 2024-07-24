@@ -12,27 +12,29 @@ import (
 	"github.com/qqqq/eth-trading-system/internal/utils"
 )
 
-const (
-	baseURL   = "https://data.alpaca.markets/v1beta3/crypto"
-	ethSymbol = "ETH/USD"
-)
+type AlpacaClient interface {
+	GetHistoricalBars(symbol, timeframe, start, end string, limit int, pageToken string) ([]models.AlpacaBar, string, error)
+	GetLatestBar(symbol string) (*models.AlpacaBar, error)
+}
 
-type AlpacaService struct {
+type HTTPAlpacaClient struct {
 	apiKey    string
 	apiSecret string
 	client    *http.Client
+	baseURL   string
 }
 
-func NewAlpacaService(apiKey, apiSecret string) *AlpacaService {
-	return &AlpacaService{
+func NewAlpacaClient(apiKey, apiSecret string) AlpacaClient {
+	return &HTTPAlpacaClient{
 		apiKey:    apiKey,
 		apiSecret: apiSecret,
 		client:    &http.Client{Timeout: 10 * time.Second},
+		baseURL:   "https://data.alpaca.markets/v1beta3/crypto",
 	}
 }
 
-func (s *AlpacaService) GetHistoricalBars(symbol, timeframe, start, end string, limit int, pageToken string) ([]models.AlpacaBar, string, error) {
-	endpoint := fmt.Sprintf("%s/us/bars", baseURL)
+func (c *HTTPAlpacaClient) GetHistoricalBars(symbol, timeframe, start, end string, limit int, pageToken string) ([]models.AlpacaBar, string, error) {
+	endpoint := fmt.Sprintf("%s/us/bars", c.baseURL)
 
 	params := url.Values{}
 	params.Add("symbols", symbol)
@@ -55,9 +57,9 @@ func (s *AlpacaService) GetHistoricalBars(symbol, timeframe, start, end string, 
 		return nil, "", err
 	}
 
-	s.setHeaders(req)
+	c.setHeaders(req)
 
-	resp, err := s.client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, "", err
 	}
@@ -80,7 +82,7 @@ func (s *AlpacaService) GetHistoricalBars(symbol, timeframe, start, end string, 
 
 	rawBars, ok := response.Bars[symbol]
 	if !ok {
-		return nil, "", fmt.Errorf("没有可用数据: %s", symbol)
+		return nil, "", fmt.Errorf("没有数据可用: %s", symbol)
 	}
 
 	var bars []models.AlpacaBar
@@ -92,22 +94,22 @@ func (s *AlpacaService) GetHistoricalBars(symbol, timeframe, start, end string, 
 	return bars, response.NextPageToken, nil
 }
 
-func (s *AlpacaService) GetLatestBar() (*models.AlpacaBar, error) {
-	endpoint := fmt.Sprintf("%s/us/latest/bars", baseURL)
+func (c *HTTPAlpacaClient) GetLatestBar(symbol string) (*models.AlpacaBar, error) {
+	endpoint := fmt.Sprintf("%s/us/latest/bars", c.baseURL)
 
 	params := url.Values{}
-	params.Add("symbols", ethSymbol)
+	params.Add("symbols", symbol)
 
 	req, err := http.NewRequest("GET", endpoint+"?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	s.setHeaders(req)
+	c.setHeaders(req)
 
 	utils.Log.Infof("请求最新数据: %s?%s", endpoint, params.Encode())
 
-	resp, err := s.client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -128,9 +130,9 @@ func (s *AlpacaService) GetLatestBar() (*models.AlpacaBar, error) {
 		return nil, err
 	}
 
-	rawBar, ok := response.Bars[ethSymbol]
+	rawBar, ok := response.Bars[symbol]
 	if !ok || len(rawBar) == 0 {
-		return nil, fmt.Errorf("没有可用数据: ETH/USD")
+		return nil, fmt.Errorf("没有数据可用: %s", symbol)
 	}
 
 	var bar models.AlpacaBar
@@ -142,8 +144,24 @@ func (s *AlpacaService) GetLatestBar() (*models.AlpacaBar, error) {
 	return &bar, nil
 }
 
-func (s *AlpacaService) setHeaders(req *http.Request) {
-	req.Header.Set("APCA-API-KEY-ID", s.apiKey)
-	req.Header.Set("APCA-API-SECRET-KEY", s.apiSecret)
+func (c *HTTPAlpacaClient) setHeaders(req *http.Request) {
+	req.Header.Set("APCA-API-KEY-ID", c.apiKey)
+	req.Header.Set("APCA-API-SECRET-KEY", c.apiSecret)
 	req.Header.Add("accept", "application/json")
+}
+
+type AlpacaService struct {
+	client AlpacaClient
+}
+
+func NewAlpacaService(client AlpacaClient) *AlpacaService {
+	return &AlpacaService{client: client}
+}
+
+func (s *AlpacaService) GetHistoricalBars(symbol, timeframe, start, end string, limit int, pageToken string) ([]models.AlpacaBar, string, error) {
+	return s.client.GetHistoricalBars(symbol, timeframe, start, end, limit, pageToken)
+}
+
+func (s *AlpacaService) GetLatestBar(symbol string) (*models.AlpacaBar, error) {
+	return s.client.GetLatestBar(symbol)
 }
