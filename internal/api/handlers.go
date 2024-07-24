@@ -6,6 +6,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/qqqq/eth-trading-system/internal/analysis"
 	"github.com/qqqq/eth-trading-system/internal/models"
 	"github.com/qqqq/eth-trading-system/internal/services"
 )
@@ -13,12 +14,14 @@ import (
 type Handler struct {
 	alpacaService         *services.AlpacaService
 	dataCollectionService *services.DataCollectionService
+	analysisService       *services.AnalysisService
 }
 
-func NewHandler(alpacaService *services.AlpacaService, dataCollectionService *services.DataCollectionService) *Handler {
+func NewHandler(alpacaService *services.AlpacaService, dataCollectionService *services.DataCollectionService, analysisService *services.AnalysisService) *Handler {
 	return &Handler{
 		alpacaService:         alpacaService,
 		dataCollectionService: dataCollectionService,
+		analysisService:       analysisService,
 	}
 }
 
@@ -74,11 +77,34 @@ func (h *Handler) GetHistoricalData(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(bars)
 }
 
+func (h *Handler) GetMarketAnalysis(w http.ResponseWriter, r *http.Request) {
+	timeframe := r.URL.Query().Get("timeframe")
+	if timeframe == "" {
+		http.Error(w, "必须提供timeframe参数", http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.analysisService.GetLatestAnalysis(timeframe)
+	if err != nil {
+		http.Error(w, "获取市场分析失败: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
 func (h *Handler) IndexHandler(w http.ResponseWriter, r *http.Request) {
 	timeframe := "1Day"
 	latestBar, err := h.dataCollectionService.GetLatestPrice()
 	if err != nil {
 		http.Error(w, "获取最新数据失败", http.StatusInternalServerError)
+		return
+	}
+	// 获取市场分析数据
+	analysisResult, err := h.analysisService.GetLatestAnalysis("1Day")
+	if err != nil {
+		http.Error(w, "获取市场分析失败", http.StatusInternalServerError)
 		return
 	}
 
@@ -95,11 +121,13 @@ func (h *Handler) IndexHandler(w http.ResponseWriter, r *http.Request) {
 		LatestPrice           float64
 		HistoricalData        []models.Bar
 		DataCollectionRunning bool
+		MarketAnalysis        *analysis.AnalysisResult
 	}{
 		IsRunning:             true,
 		LatestPrice:           latestBar.Close,
 		HistoricalData:        historicalData,
 		DataCollectionRunning: true,
+		MarketAnalysis:        analysisResult,
 	}
 
 	tmpl, err := template.ParseFiles("web/templates/index.html")

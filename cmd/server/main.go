@@ -30,16 +30,19 @@ func main() {
 	defer db.Close()
 
 	dataRepo := storage.NewDataRepository(db.DB)
+	analysisService := services.NewAnalysisService(dataRepo)
+
 	alpacaClient := services.NewAlpacaClient(cfg.AlpacaAPIKey, cfg.AlpacaAPISecret)
 	alpacaService := services.NewAlpacaService(alpacaClient)
 	dataCollectionService := services.NewDataCollectionService(alpacaService, dataRepo)
 	dataCollectionService.Start()
 
-	handler := api.NewHandler(alpacaService, dataCollectionService)
+	handler := api.NewHandler(alpacaService, dataCollectionService, analysisService)
 
 	http.HandleFunc("/", handler.IndexHandler)
 	http.HandleFunc("/api/price", handler.GetLatestPrice)
 	http.HandleFunc("/api/historical", handler.GetHistoricalData)
+	http.HandleFunc("/api/analysis", handler.GetMarketAnalysis)
 
 	utils.Log.Infof("服务器启动在端口 %s", cfg.ServerPort)
 	if err := http.ListenAndServe(cfg.ServerPort, nil); err != nil {
