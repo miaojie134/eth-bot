@@ -1,5 +1,4 @@
 // internal/analysis/engine.go
-
 package analysis
 
 import (
@@ -17,7 +16,7 @@ type AnalysisEngine struct {
 	supportResistanceAnalyzer *support_resistance.SupportResistanceAnalyzer
 }
 
-func NewAnalysisEngine() *AnalysisEngine {
+func NewAnalysisEngine() Engine {
 	return &AnalysisEngine{
 		indicators:                make([]Indicator, 0),
 		trendAnalyzer:             trend.NewTrendAnalyzer(10, 30),
@@ -29,11 +28,11 @@ func (e *AnalysisEngine) AddIndicator(indicator Indicator) {
 	e.indicators = append(e.indicators, indicator)
 }
 
-func (e *AnalysisEngine) Analyze(bars []models.Bar) (*AnalysisResult, error) {
+func (e *AnalysisEngine) Analyze(bars []models.Bar) (*models.AnalysisResult, error) {
 	utils.Log.Infof("数据点数量：%d", len(bars))
-	result := &AnalysisResult{
+	result := &models.AnalysisResult{
 		Timestamp:   time.Now(),
-		MarketState: Neutral,
+		MarketState: models.Neutral,
 		Indicators:  make(map[string]interface{}),
 	}
 
@@ -57,9 +56,9 @@ func (e *AnalysisEngine) Analyze(bars []models.Bar) (*AnalysisResult, error) {
 
 	// 市场状态判断逻辑
 	if trendState == "Uptrend" {
-		result.MarketState = Bullish
+		result.MarketState = models.Bullish
 	} else if trendState == "Downtrend" {
-		result.MarketState = Bearish
+		result.MarketState = models.Bearish
 	}
 
 	utils.Log.Infof("分析结果：%+v", result)

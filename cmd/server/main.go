@@ -4,11 +4,13 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/qqqq/eth-trading-system/internal/analysis"
 	"github.com/qqqq/eth-trading-system/internal/api"
 	"github.com/qqqq/eth-trading-system/internal/config"
 	"github.com/qqqq/eth-trading-system/internal/datamanager"
 	"github.com/qqqq/eth-trading-system/internal/services"
 	"github.com/qqqq/eth-trading-system/internal/storage"
+	"github.com/qqqq/eth-trading-system/internal/strategy"
 	"github.com/qqqq/eth-trading-system/internal/utils"
 )
 
@@ -31,7 +33,16 @@ func main() {
 	defer db.Close()
 
 	dataRepo := storage.NewDataRepository(db.DB)
-	analysisService := services.NewAnalysisService(dataRepo)
+
+	analysisEngine := analysis.NewAnalysisEngine()
+
+	simpleMAStrategy := strategy.NewSimpleMAStrategy(10, 30)
+	macdStrategy := strategy.NewMACDStrategy()
+
+	strategyService := services.NewStrategyService(simpleMAStrategy, macdStrategy)
+
+	// Create analysis service
+	analysisService := services.NewAnalysisService(analysisEngine, dataRepo, strategyService)
 
 	alpacaClient := services.NewAlpacaClient(cfg.AlpacaAPIKey, cfg.AlpacaAPISecret)
 	alpacaService := services.NewAlpacaService(alpacaClient)

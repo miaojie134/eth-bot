@@ -90,25 +90,3 @@ func calculateDuration(timeframe string) time.Duration {
 		return 0
 	}
 }
-
-// func convertAlpacaBarToBar(alpacaBar *models.AlpacaBar) *models.Bar {
-// 	timestamp, _ := time.Parse(time.RFC3339, alpacaBar.Timestamp)
-// 	return &models.Bar{
-// 		Open:       alpacaBar.Open,
-// 		High:       alpacaBar.High,
-// 		Low:        alpacaBar.Low,
-// 		Close:      alpacaBar.Close,
-// 		Volume:     alpacaBar.Volume,
-// 		Timestamp:  timestamp,
-// 		TradeCount: alpacaBar.TradeCount,
-// 		VWAP:       alpacaBar.VWAP,
-// 	}
-// }
-
-// func convertAlpacaBarsToBar(alpacaBars []models.AlpacaBar) []models.Bar {
-// 	var bars []models.Bar
-// 	for _, alpacaBar := range alpacaBars {
-// 		bars = append(bars, *convertAlpacaBarToBar(&alpacaBar))
-// 	}
-// 	return bars
-// }

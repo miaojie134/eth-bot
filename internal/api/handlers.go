@@ -6,7 +6,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/qqqq/eth-trading-system/internal/analysis"
 	"github.com/qqqq/eth-trading-system/internal/models"
 	"github.com/qqqq/eth-trading-system/internal/services"
 )
@@ -113,7 +112,7 @@ func (h *Handler) getIndexData() (interface{}, error) {
 		LatestPrice           float64
 		HistoricalData        []models.Bar
 		DataCollectionRunning bool
-		MarketAnalysis        *analysis.AnalysisResult
+		MarketAnalysis        *models.AnalysisResult
 	}{
 		IsRunning:             true,
 		LatestPrice:           latestBar.Close,

@@ -3,7 +3,7 @@
 package analysis
 
 import (
-	"time"
+	"fmt"
 
 	"github.com/qqqq/eth-trading-system/internal/models"
 )
@@ -13,21 +13,19 @@ type Indicator interface {
 	Name() string
 }
 
-type MarketState int
-
-const (
-	Bullish MarketState = iota
-	Bearish
-	Neutral
-)
-
-type AnalysisResult struct {
-	Timestamp   time.Time
-	MarketState MarketState
-	Indicators  map[string]interface{}
+type Engine interface {
+	Analyze(bars []models.Bar) (*models.AnalysisResult, error)
+	AddIndicator(indicator Indicator)
 }
 
-type Engine interface {
-	Analyze(bars []models.Bar) (*AnalysisResult, error)
-	AddIndicator(indicator Indicator)
+const (
+	IndicatorSMAPrefix     = "SMA"
+	IndicatorMACD          = "MACD"
+	IndicatorMACDSignal    = "MACDSignal"
+	IndicatorMACDHistogram = "MACDHistogram"
+)
+
+// IndicatorSMA returns the name of the Simple Moving Average indicator for a given period
+func IndicatorSMA(period int) string {
+	return fmt.Sprintf("%s%d", IndicatorSMAPrefix, period)
 }
