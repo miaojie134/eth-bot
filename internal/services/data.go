@@ -21,6 +21,7 @@ func NewDataCollectionService(dataManager *datamanager.DataManager) *DataCollect
 func (s *DataCollectionService) Start() {
 	s.initializeData()
 
+	go s.startTicker("1Min", 1*time.Minute)
 	go s.startTicker("5Min", 5*time.Minute)
 	go s.startTicker("15Min", 15*time.Minute)
 	go s.startTicker("1Hour", 1*time.Hour)
@@ -46,6 +47,10 @@ func (s *DataCollectionService) startTicker(timeframe string, interval time.Dura
 	ticker := time.NewTicker(interval)
 	for range ticker.C {
 		utils.Log.Infof("收集并存储数据，时间框架: %s", timeframe)
+		if timeframe == "1Min" {
+			s.collectAndStoreLatestPrice()
+			continue
+		}
 		s.collectAndStoreHistoricalData(timeframe)
 	}
 }
